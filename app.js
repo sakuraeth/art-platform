@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Web3 from 'web3';
 import { ethers } from 'ethers';
-import ArtAuctionABI from './ArtAuctionABI.json'; 
+import ArtAuctionABI from './ArtAuctionABI.json';
 
 const ArtAuctionApp = () => {
-  const [web3, setWeb3] = useState(null);
-  const [provider, setProvider] = useState(null);
-  const [artAuctionContract, setArtAuctionContract] = useState(null);
-  const [currentAccount, setCurrentAccount] = useState(null);
+  const [web3Data, setWeb3Data] = useState({
+    web3: null,
+    provider: null,
+    artAuctionContract: null,
+    currentAccount: null,
+  });
   const [auctions, setAuctions] = useState([]);
 
   useEffect(() => {
@@ -18,23 +20,25 @@ const ArtAuctionApp = () => {
     if (window.ethereum) {
       const web3 = new Web3(window.ethereum);
       const provider = new ethers.providers.Web3Provider(window.ethereum);
-      setWeb3(web3);
-      setProvider(provider);
       try {
         await window.ethereum.enable();
         const accounts = await web3.eth.getAccounts();
         if (accounts.length > 0) {
-          setCurrentAccount(accounts[0]);
           const networkId = await web3.eth.net.getId();
           const artAuctionData = ArtAuctionABI.networks[networkId];
           if (artAuctionData) {
             const artAuction = new web3.eth.Contract(ArtAuctionABI.abi, artAuctionData.address);
-            setArtAuctionContract(artAuction);
+            setWeb3Data({
+              web3,
+              provider,
+              artAuctionContract: artAuction,
+              currentAccount: accounts[0],
+            });
             loadAuctions(artAuction);
           } else {
             console.error('ArtAuction contract not deployed to detected network.');
           }
-        } 
+        }
       } catch (error) {
         console.error('Could not connect to wallet', error);
       }
@@ -48,28 +52,28 @@ const ArtAuctionApp = () => {
     setAuctions(auctions);
   };
 
-  const placeBid = async (auctionId, bidAmount) => {
-    if (!artAuctionContract) return;
-    const amountWei = web3.utils.toWei(bidAmount.toString(), 'ether');
+  const placeBid = useCallback(async (auctionId, bidAmount) => {
+    if (!web3Data.artAuctionContract) return;
+    const amountWei = web3Data.web3.utils.toWei(bidAmount.toString(), 'ether');
     try {
-      await artAuctionContract.methods.placeBid(auctionId).send({ from: currentAccount, value: amountWei });
+      await web3Data.artAuctionContract.methods.placeBid(auctionId).send({ from: web3Data.currentAccount, value: amountWei });
       console.log('Bid placed successfully');
-      loadAuctions(artAuctionContract);
+      loadAuctions(web3Data.artAuctionContract);
     } catch (error) {
       console.error('Error placing bid: ', error.message);
     }
-  };
+  }, [web3Data]);
 
   return (
     <div>
       <h1>Art Auctions</h1>
-      {currentAccount ? (
+      {web3Data.currentAccount ? (
         <div>
           <h2>Auctions</h2>
           <ul>
             {auctions.map((auction, index) => (
               <li key={index}>
-                Art: {auction.artName} | Minimum Bid: {web3.utils.fromWei(auction.minBid.toString(), 'ether')} ETH
+                Art: {auction.artName} | Minimum Bid: {web3Data.web3.utils.fromWei(auction.minBid.toString(), 'ether')} ETH
                 <button onClick={() => placeBid(auction.id, auction.minBid)}>Place a Bid</button>
               </li>
             ))}
