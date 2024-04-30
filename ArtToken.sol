@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
@@ -9,6 +10,8 @@ contract DigitalArtNFT is ERC721URIStorage, Ownable {
     Counters.Counter private _tokenIds; 
 
     event NFTCreated(uint256 indexed tokenId, string tokenURI, address owner);
+    event NFTBurned(uint256 indexed tokenId);
+    event MetadataURIUpdated(uint256 indexed tokenId, string newMetadataURI);
 
     constructor() ERC721("DigitalArtNFT", "DANFT") {}
 
@@ -29,6 +32,18 @@ contract DigitalArtNFT is ERC721URIStorage, Ownable {
     function transferNFT(address from, address to, uint256 tokenId) public {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "Caller is not owner nor approved");
         _transfer(from, to, tokenId);
+    }
+    
+    function burnNFT(uint256 tokenId) public {
+        require(_isApprovedOrOwner(_msgSender(), tokenId) || owner() == _msgSender(), "Caller is not owner nor approved or contract owner");
+        _burn(tokenId);
+        emit NFTBurned(tokenId);
+    }
+
+    function updateMetadataURI(uint256 tokenId, string memory newMetadataURI) public {
+        require(_isApprovedOrOwner(_msgSender(), tokenId), "Caller is not owner nor approved");
+        _setTokenURI(tokenId, newMetadataURI);
+        emit MetadataURIUpdated(tokenId, newMetadataURI);
     }
 
     function queryOwnership(uint256 tokenId) public view returns (address owner) {
