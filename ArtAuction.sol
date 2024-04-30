@@ -31,14 +31,39 @@ contract ArtAuction is ReentrancyGuard {
     }
 
     function startAuction(uint256 tokenId, uint256 minBid, uint256 duration) external {
+        _validateOwnership(tokenId);
+        _transferNftToContract(msg.sender, tokenId);
+        _initiateAuction(tokenId, msg.sender, minBid, duration);
+    }
+
+    function placeBid(uint256 tokenId) external payable nonReentrant {
+        _validateBidConditions(tokenId);
+        _updateAuctionState(tokenId, msg.value, msg.sender);
+    }
+
+    function endAuction(uint256 tokenId) external {
+        _validateAuctionEndConditions(tokenId);
+        _concludeAuction(tokenId);
+    }
+
+    function withdrawFunds(uint256 tokenId) external nonReentrant {
+        _withdrawBidFunds(tokenId, msg.sender);
+    }
+
+    // Internal helper functions to refactor complex logic
+    function _validateOwnership(uint256 tokenId) internal view {
         require(nftContract.ownerOf(tokenId) == msg.sender, "You must own the NFT to auction it.");
+    }
+
+    function _transferNftToContract(address from, uint256 tokenId) internal {
+        nftContract.transferFrom(from, address(this), tokenId);
+    }
+
+    function _initiateAuction(uint256 tokenId, address seller, uint256 minBid, uint256 duration) internal {
         require(auctions[tokenId].endTime == 0, "Auction already exists.");
-
-        nftContract.transferFrom(msg.sender, address(this), tokenId);
-
         uint256 endTime = block.timestamp.add(duration);
         auctions[tokenId] = Auction({
-            seller: msg.sender,
+            seller: seller,
             minBid: minBid,
             highestBid: 0,
             highestBidder: address(0),
@@ -46,30 +71,37 @@ contract ArtAuction is ReentrancyGuard {
             ended: false
         });
 
-        emit AuctionStarted(tokenId, msg.sender, minBid, endTime);
+        emit AuctionStarted(tokenId, seller, minBid, endTime);
     }
 
-    function placeBid(uint256 tokenId) external payable nonReentrant {
+    function _validateBidConditions(uint256 tokenId) internal view {
         Auction storage auction = auctions[tokenId];
         require(block.timestamp < auction.endTime, "Auction already ended.");
         require(msg.value > auction.highestBid && msg.value >= auction.minBid, "Bid not high enough.");
+    }
 
+    function _updateAuctionState(uint256 tokenId, uint256 bidAmount, address bidder) internal {
+        Auction storage auction = auctions[tokenId];
         if (auction.highestBidder != address(0)) {
             bids[tokenId][auction.highestBidder] += auction.highestBid;
         }
 
-        auction.highestBid = msg.value;
-        auction.highestBidder = msg.sender;
+        auction.highestBid = bidAmount;
+        auction.highestBidder = bidder;
         
-        emit BidPlaced(tokenId, msg.sender, msg.value);
+        emit BidPlaced(tokenId, bidder, bidAmount);
     }
 
-    function endAuction(uint256 tokenId) external {
+    function _validateAuctionEndConditions(uint256 tokenId) internal view {
         Auction storage auction = auctions[tokenId];
         require(block.timestamp >= auction.endTime, "Auction not yet ended.");
         require(!auction.ended, "Auction already ended.");
+    }
 
+    function _concludeAuction(uint256 tokenId) internal {
+        Auction storage auction = auctions[tokenId];
         auction.ended = true;
+
         if (auction.highestBidder != address(0)) {
             nftContract.transferFrom(address(this), auction.highestBidder, tokenId);
             payable(auction.seller).transfer(auction.highestBid);
@@ -80,13 +112,11 @@ contract ArtAuction is ReentrancyGuard {
         emit AuctionEnded(tokenId, auction.highestBidder, auction.highestBid);
     }
 
-    function withdrawFunds(uint256 tokenId) external nonReentrant {
-        uint256 amount = bids[tokenId][msg.sender];
+    function _withdrawBidFunds(uint256 tokenId, address bidder) internal {
+        uint256 amount = bids[tokenId][bidder];
         require(amount > 0, "No funds to withdraw.");
-
-        bids[tokenId][msg.sender] = 0;
-        payable(msg.sender).transfer(amount);
-
-        emit FundsWithdrawn(msg.sender, amount);
+        bids[tokenId][bidder] = 0;
+        payable(bidder).transfer(amount);
+        emit FundsWithdrawn(bidder, amount);
     }
 }
