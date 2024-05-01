@@ -7,36 +7,40 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract DigitalArtNFT is ERC721URIStorage, Ownable {
     using Counters for Counters.Counter;
-    Counters.Counter private _tokenIds; 
+    Counters.Counter private _tokenIds;
 
     event NFTCreated(uint256 indexed tokenId, string tokenURI, address owner);
     event NFTBurned(uint256 indexed tokenId);
     event MetadataURIUpdated(uint256 indexed tokenId, string newMetadataURI);
 
+    mapping(uint256 => address) private _cachedOwners;
+
     constructor() ERC721("DigitalArtNFT", "DANFT") {}
 
     function mintNFT(address recipient, string memory metadataURI)
-        public
-        onlyOwner
+        public onlyOwner
         returns (uint256)
     {
-        _tokenIds.increment(); 
-        uint256 newItemId = _tokenIds.current(); 
-        _mint(recipient, newItemId); 
-        _setTokenURI(newItemId, metadataURI); 
+        _tokenIds.increment();
+        uint256 newItemId = _tokenIds.current();
+        _mint(recipient, newItemId);
+        _setTokenURI(newItemId, metadataURI);
+        _cachedOwners[newItemId] = recipient; // Cache owner upon minting
 
         emit NFTCreated(newItemId, metadataURI, recipient);
-        return newItemId; 
+        return newItemId;
     }
 
     function transferNFT(address from, address to, uint256 tokenId) public {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "Caller is not owner nor approved");
         _transfer(from, to, tokenId);
+        _cachedOwners[tokenId] = to; // Update cached owner upon transfer
     }
-    
+
     function burnNFT(uint256 tokenId) public {
         require(_isApprovedOrOwner(_msgSender(), tokenId) || owner() == _msgSender(), "Caller is not owner nor approved or contract owner");
         _burn(tokenId);
+        delete _cachedOwners[tokenId]; // Remove cached ownership upon burning
         emit NFTBurned(tokenId);
     }
 
@@ -47,7 +51,7 @@ contract DigitalArtNFT is ERC721URIStorage, Ownable {
     }
 
     function queryOwnership(uint256 tokenId) public view returns (address owner) {
-        owner = ownerOf(tokenId);
-        return owner;
+        require(_exists(tokenId), "Query for nonexistent token");
+        return _cachedOwners[tokenId]; // Return cached owner
     }
 }
