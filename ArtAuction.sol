@@ -19,6 +19,7 @@ contract ArtAuction is ReentrancyGuard {
     }
 
     mapping(uint256 => Auction) public auctions;
+
     mapping(uint256 => mapping(address => uint256)) public bids;
 
     event AuctionStarted(uint256 indexed tokenId, address seller, uint256 minBid, uint256 endTime);
@@ -50,7 +51,6 @@ contract ArtAuction is ReentrancyGuard {
         _withdrawBidFunds(tokenId, msg.sender);
     }
 
-    // Internal helper functions to refactor complex logic
     function _validateOwnership(uint256 tokenId) internal view {
         require(nftContract.ownerOf(tokenId) == msg.sender, "You must own the NFT to auction it.");
     }
@@ -62,6 +62,7 @@ contract ArtAuction is ReentrancyGuard {
     function _initiateAuction(uint256 tokenId, address seller, uint256 minBid, uint256 duration) internal {
         require(auctions[tokenId].endTime == 0, "Auction already exists.");
         uint256 endTime = block.timestamp.add(duration);
+
         auctions[tokenId] = Auction({
             seller: seller,
             minBid: minBid,
@@ -88,7 +89,7 @@ contract ArtAuction is ReentrancyGuard {
 
         auction.highestBid = bidAmount;
         auction.highestBidder = bidder;
-        
+
         emit BidPlaced(tokenId, bidder, bidAmount);
     }
 
@@ -117,6 +118,7 @@ contract ArtAuction is ReentrancyGuard {
         require(amount > 0, "No funds to withdraw.");
         bids[tokenId][bidder] = 0;
         payable(bidder).transfer(amount);
+
         emit FundsWithdrawn(bidder, amount);
     }
 }
