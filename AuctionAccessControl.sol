@@ -14,7 +14,7 @@ contract ArtAuction is AccessControl, ERC721URIStorage, ReentrancyGuard {
 
     struct RoyaltyInfo {
         address artist;
-        uint256 royaltyPercentage; 
+        uint96 royaltyPercentage; // Reduced size from uint256 to uint96, large enough for storing percentage values
     }
 
     struct Auction {
@@ -44,7 +44,7 @@ contract ArtAuction is AccessControl, ERC721URIStorage, ReentrancyGuard {
         _setupRole(BIDDER_ROLE, msg.sender);
     }
 
-    function mintToken(string memory tokenURI, uint256 royaltyPercentage) public onlyRole(ARTIST_ROLE) returns (uint256) {
+    function mintToken(string memory tokenURI, uint96 royaltyPercentage) public onlyRole(ARTIST_ROLE) returns (uint256) {
         require(royaltyPercentage <= 100, "Royalty cannot exceed 100%");
 
         _tokenIds++;
@@ -91,9 +91,10 @@ contract ArtAuction is AccessControl, ERC721URIStorage, ReentrancyGuard {
 
             auction.seller.sendValue(sellerAmount);
 
-            _transfer(auction.seller, auction.highestBidder, tokenId);
+            _safeTransfer(auction.seller, auction.highestBidder, tokenId, "");
         } else {
-            _transfer(address(this), auction.seller, tokenId);
+            // This returns the token back to the seller if no bids were received
+            _safeTransfer(address(this), auction.seller, tokenId, "");
         }
 
         emit AuctionEnded(tokenId, auction.highestBidder, auction.highestBid);
