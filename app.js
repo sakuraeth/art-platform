@@ -11,17 +11,19 @@ const ArtAuctionApp = () => {
     currentAccount: null,
   });
   const [auctions, setAuctions] = useState([]);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     loadBlockchainData();
   }, []);
 
   const loadBlockchainData = async () => {
+    setError('');
     if (window.ethereum) {
       const web3 = new Web3(window.ethereum);
       const provider = new ethers.providers.Web3Provider(window.ethereum);
       try {
-        await window.ethereum.enable();
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
         const accounts = await web3.eth.getAccounts();
         if (accounts.length > 0) {
           const networkId = await web3.eth.net.getId();
@@ -37,19 +39,27 @@ const ArtAuctionApp = () => {
             loadAuctions(artAuction);
           } else {
             console.error('ArtAuction contract not deployed to detected network.');
+            setError('ArtAuction contract not deployed to detected network.');
           }
         }
       } catch (error) {
         console.error('Could not connect to wallet', error);
+        setError('Could not connect to wallet. ' + error.message);
       }
     } else {
       console.log('Please install MetaMask!');
+      setError('Please install MetaMask!');
     }
   };
 
   const loadAuctions = async (contract) => {
-    const auctions = await contract.methods.getActiveAuctions().call();
-    setAuctions(auctions);
+    try {
+      const auctions = await contract.methods.getActiveAuctions().call();
+      setAuctions(auctions);
+    } catch (error) {
+      console.error('Failed to load auctions:', error);
+      setError('Failed to load auctions. ' + error.message);
+    }
   };
 
   const placeBid = useCallback(async (auctionId, bidAmount) => {
@@ -61,12 +71,14 @@ const ArtAuctionApp = () => {
       loadAuctions(web3Data.artAuctionContract);
     } catch (error) {
       console.error('Error placing bid: ', error.message);
+      setError('Error placing bid. ' + error.message);
     }
   }, [web3Data]);
 
   return (
     <div>
       <h1>Art Auctions</h1>
+      {error && <p style={{ color: 'red' }}>Error: {error}</p>}
       {web3Data.currentAccount ? (
         <div>
           <h2>Auctions</h2>
