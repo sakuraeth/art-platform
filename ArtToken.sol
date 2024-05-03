@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
@@ -26,11 +25,16 @@ contract DigitalArtNFT is ERC721URIStorage, Ownable {
 
         _tokenIds.increment();
         uint256 newItemId = _tokenIds.current();
-        _mint(recipient, newItemId);
-        _setTokenURI(newItemId, metadataURI);
-        _cachedOwners[newItemId] = recipient; // Cache owner upon minting
+        
+        try this._mint(recipient, newItemId) {
+            _setTokenURI(newItemId, metadataURI);
+            _cachedOwners[newItemId] = recipient; // Cache owner upon minting
 
-        emit NFTCreated(newItemId, metadataURI, recipient);
+            emit NFTCreated(newItemId, metadataURI, recipient);
+        } catch {
+            revert("Minting of NFT failed.");
+        }
+
         return newItemId;
     }
 
@@ -38,17 +42,23 @@ contract DigitalArtNFT is ERC721URIStorage, Ownable {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "Caller is not owner nor approved");
         require(to != address(0), "Transfer to the zero address");
 
-        _transfer(from, to, tokenId);
-        _cachedOwners[tokenId] = to; // Update cached owner upon transfer
+        try this._transfer(from, to, tokenId) {
+            _cachedOwners[tokenId] = to; // Update cached owner upon transfer
+        } catch {
+            revert("Transfer of NFT failed.");
+        }
     }
 
     function burnNFT(uint256 tokenId) public {
         require(_exists(tokenId), "Token does not exist.");
         require(_isApprovedOrOwner(_msgSender(), tokenId) || owner() == _msgSender(), "Caller is not owner nor approved or contract owner");
         
-        _burn(tokenId);
-        delete _cachedOwners[tokenId]; // Remove cached ownership upon burning
-        emit NFTBurned(tokenId);
+        try this._burn(tokenId) {
+            delete _cachedOwners[tokenId]; // Remove cached ownership upon burning
+            emit NFTBurned(tokenId);
+        } catch {
+            revert("Burning of NFT failed.");
+        }
     }
 
     function updateMetadataURI(uint256 tokenId, string memory newMetadataURI) public {
@@ -56,12 +66,21 @@ contract DigitalArtNFT is ERC721URIStorage, Ownable {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "Caller is not owner nor approved");
         require(bytes(newMetadataURI).length > 0, "New metadata URI cannot be empty.");
         
-        _setTokenURI(tokenId, newMetadataURI);
-        emit MetadataURIUpdated(tokenId, newMetadataURI);
+        try this._setTokenURI(tokenId, newMetadataURI) {
+            emit MetadataURIUpdated(tokenId, newMetadataURI);
+        } catch {
+            revert("Updating metadata URI failed.");
+        }
     }
 
     function queryOwnership(uint256 tokenId) public view returns (address) {
         require(_exists(tokenId), "Query for nonexistent token");
-        return _cachedOwners[tokenId]; // Return cached owner
+
+        address owner = _cachedOwners[tokenId];
+        if (owner == address(0)) {
+            revert("The queried token ID does not have a cached owner.");
+        }
+
+        return owner; // Return cached owner
     }
 }
