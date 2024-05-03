@@ -1,15 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Web3 from 'web3';
 import { ethers } from 'ethers';
 import ArtAuctionABI from './ArtAuctionABI.json';
 
 const ArtAuctionApp = () => {
-  const [web3Data, setWeb3Data] = useState({
-    web3: null,
-    provider: null,
-    artAuctionContract: null,
-    currentAccount: null,
-  });
+  const [web3, setWeb3] = useState(null);
+  const [currentAccount, setCurrentAccount] = useState(null);
+  const [artAuctionContract, setArtAuctionContract] = useState(null);
   const [auctions, setAuctions] = useState([]);
   const [error, setError] = useState('');
 
@@ -25,18 +22,18 @@ const ArtAuctionApp = () => {
       return;
     }
 
-    const web3 = new Web3(window.ethereum);
+    const web3Instance = new Web3(window.ethereum);
     const provider = new ethers.providers.Web3Provider(window.ethereum);
     try {
       await window.ethereum.request({ method: 'eth_requestAccounts' });
-      const accounts = await web3.eth.getAccounts();
+      const accounts = await web3Instance.eth.getAccounts();
 
       if (!accounts.length) {
         setError('No accounts found. Make sure MetaMask is logged in.');
         return;
       }
 
-      const networkId = await web3.eth.net.getId();
+      const networkId = await web3Instance.eth.net.getId();
       const artAuctionData = ArtAuctionABI.networks[networkId];
 
       if (!artAuctionData) {
@@ -45,13 +42,10 @@ const ArtAuctionApp = () => {
         return;
       }
 
-      const artAuction = new web3.eth.Contract(ArtAuctionABI.abi, artAuctionData.address);
-      setWeb3Data({
-        web3,
-        provider,
-        artAuctionContract: artAuction,
-        currentAccount: accounts[0],
-      });
+      const artAuction = new web3Instance.eth.Contract(ArtAuctionABI.abi, artAuctionData.address);
+      setWeb3(web3Instance);
+      setCurrentAccount(accounts[0]);
+      setArtAuctionContract(artAuction);
       loadAuctions(artAuction);
     } catch (error) {
       console.error('Failed to connect to MetaMask:', error);
@@ -59,7 +53,7 @@ const ArtAuctionApp = () => {
     }
   };
 
-  const loadAuctions = async (contract) => {
+  const loadAuctions = useCallback(async (contract) => {
     try {
       const auctionsLoaded = await contract.methods.getActiveAuctions().call();
       setAuctions(auctionsLoaded);
@@ -67,37 +61,42 @@ const ArtAuctionApp = () => {
       console.error('Failed to load auctions:', error);
       setError('Failed to load auctions. ' + error.message);
     }
-  };
+  }, []);
 
   const placeBid = useCallback(async (auctionId, bidAmount) => {
-    if (!web3Data.artAuctionContract) {
+    if (!artAuctionContract) {
       setError('Art Auction Contract is not loaded.');
       return;
     }
 
-    const amountWei = web3Data.web3.utils.toWei(bidAmount.toString(), 'ether');
-
+    const amountWei = web3.utils.toWei(bidAmount.toString(), 'ether');
     try {
-      await web3Data.artAuctionContract.methods.placeBid(auctionId).send({ from: web3Data.currentAccount, value: amountWei });
+      await artAuctionContract.methods.placeBid(auctionId).send({ from: currentAccount, value: amountWei });
       console.log('Bid placed successfully.');
-      loadAuctions(web3Data.artAuctionContract);
+      loadAuctions(artAuctionContract);
     } catch (error) {
       console.error('Error placing bid: ', error);
       setError('Error placing bid. ' + error.message);
     }
-  }, [web3Data]);
+  }, [artAuctionContract, currentAccount, web3, loadAuctions]);
+
+  const fromWei = useCallback((value) => {
+    return web3 ? web3.utils.fromWei(value.toString(), 'ether') : '';
+  }, [web3]);
+
+  const isUserConnected = useMemo(() => !!currentAccount, [currentAccount]);
 
   return (
     <div>
       <h1>Art Auctions</h1>
       {error && <p style={{ color: 'red' }}>Error: {error}</p>}
-      {web3Data.currentAccount ? (
+      {isUserConnected ? (
         <div>
           <h2>Auctions</h2>
           <ul>
             {auctions.map((auction, index) => (
               <li key={index}>
-                Art: {auction.artName} | Minimum Bid: {web3Data.web3.utils.fromWei(auction.minBid.toString(), 'ether')} ETH
+                Art: {auction.artName} | Minimum Bid: {fromWei(auction.minBid)} ETH
                 <button onClick={() => placeBid(auction.id, auction.minBid)}>Place Bid</button>
               </li>
             ))}
