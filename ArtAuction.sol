@@ -4,121 +4,121 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
-contract ArtAuction is ReentrancyGuard {
+contract ArtAuctionPlatform is ReentrancyGuard {
     using SafeMath for uint256;
 
-    IERC721 public nftContract;
+    IERC721 public nftTokenContract;
 
-    struct Auction {
-        address seller;
-        uint256 minBid;
-        uint256 highestBid;
-        address highestBidder;
-        uint256 endTime;
-        bool ended;
+    struct AuctionDetails {
+        address owner;
+        uint256 startingBid;
+        uint256 topBid;
+        address topBidder;
+        uint256 closingTime;
+        bool isCompleted;
     }
 
-    mapping(uint256 => Auction) public auctions;
+    mapping(uint256 => AuctionDetails) public tokenAuctions;
 
-    mapping(uint256 => mapping(address => uint256)) public bids;
+    mapping(uint256 => mapping(address => uint256)) public participantBids;
 
-    event AuctionStarted(uint256 indexed tokenId, address seller, uint256 minBid, uint256 endTime);
-    event BidPlaced(uint256 indexed tokenId, address bidder, uint256 amount);
-    event AuctionEnded(uint256 indexed tokenId, address winner, uint256 amount);
-    event FundsWithdrawn(address withdrawer, uint256 amount);
+    event AuctionInitiated(uint256 indexed tokenID, address owner, uint256 startingBid, uint256 closingTime);
+    event BidSubmitted(uint256 indexed tokenID, address bidder, uint256 amount);
+    event AuctionFinalized(uint256 indexed tokenID, address winningBidder, uint256 winningBidAmount);
+    event FundsClaimed(address claimant, uint256 amount);
 
-    constructor(IERC721 _nftContract) {
-        nftContract = _nftContract;
+    constructor(IERC721 _nftTokenContract) {
+        nftTokenContract = _nftTokenContract;
     }
 
-    function startAuction(uint256 tokenId, uint256 minBid, uint256 duration) external {
-        _validateOwnership(tokenId);
-        _transferNftToContract(msg.sender, tokenId);
-        _initiateAuction(tokenId, msg.sender, minBid, duration);
+    function initiateAuction(uint256 tokenID, uint256 minimumBid, uint256 auctionDuration) external {
+        ensureTokenOwnership(tokenID);
+        transferNftToContract(msg.sender, tokenID);
+        setupAuction(tokenID, msg.sender, minimumBid, auctionDuration);
     }
 
-    function placeBid(uint256 tokenId) external payable nonReentrant {
-        _validateBidConditions(tokenId);
-        _updateAuctionState(tokenId, msg.value, msg.sender);
+    function submitBid(uint256 tokenID) external payable nonReentrant {
+        ensureValidBidConditions(tokenID);
+        updateAuctionAfterBid(tokenID, msg.value, msg.sender);
     }
 
-    function endAuction(uint256 tokenId) external {
-        _validateAuctionEndConditions(tokenId);
-        _concludeAuction(tokenId);
+    function finalizeAuction(uint256 tokenID) external {
+        ensureAuctionCompletionConditions(tokenID);
+        concludeAuction(tokenID);
     }
 
-    function withdrawFunds(uint256 tokenId) external nonReentrant {
-        _withdrawBidFunds(tokenId, msg.sender);
+    function claimFunds(uint256 tokenID) external nonReentrant {
+        withdrawBidderFunds(tokenID, msg.sender);
     }
 
-    function _validateOwnership(uint256 tokenId) internal view {
-        require(nftContract.ownerOf(tokenId) == msg.sender, "You must own the NFT to auction it.");
+    function ensureTokenOwnership(uint256 tokenID) internal view {
+        require(nftTokenContract.ownerOf(tokenID) == msg.sender, "Auction can only be initiated by token owner.");
     }
 
-    function _transferNftToContract(address from, uint256 tokenId) internal {
-        nftContract.transferFrom(from, address(this), tokenId);
+    function transferNftToContract(address from, uint256 tokenID) internal {
+        nftTokenContract.transferFrom(from, address(this), tokenID);
     }
 
-    function _initiateAuction(uint256 tokenId, address seller, uint256 minBid, uint256 duration) internal {
-        require(auctions[tokenId].endTime == 0, "Auction already exists.");
-        uint256 endTime = block.timestamp.add(duration);
+    function setupAuction(uint256 tokenID, address owner, uint256 minimumBid, uint256 durationInSeconds) internal {
+        require(tokenAuctions[tokenID].closingTime == 0, "Auction for token already exists.");
+        uint256 closingTime = block.timestamp.add(durationInSeconds);
 
-        auctions[tokenId] = Auction({
-            seller: seller,
-            minBid: minBid,
-            highestBid: 0,
-            highestBidder: address(0),
-            endTime: endTime,
-            ended: false
+        tokenAuctions[tokenID] = AuctionDetails({
+            owner: owner,
+            startingBid: minimumBid,
+            topBid: 0,
+            topBidder: address(0),
+            closingTime: closingTime,
+            isCompleted: false
         });
 
-        emit AuctionStarted(tokenId, seller, minBid, endTime);
+        emit AuctionInitiated(tokenID, owner, minimumBid, closingTime);
     }
 
-    function _validateBidConditions(uint256 tokenId) internal view {
-        Auction storage auction = auctions[tokenId];
-        require(block.timestamp < auction.endTime, "Auction already ended.");
-        require(msg.value > auction.highestBid && msg.value >= auction.minBid, "Bid not high enough.");
+    function ensureValidBidConditions(uint256 tokenID) internal view {
+        AuctionDetails storage auction = tokenAuctions[tokenID];
+        require(block.timestamp < auction.closingTime, "Cannot bid, auction has concluded.");
+        require(msg.value > auction.topBid && msg.value >= auction.startingBid, "Bid must be higher than current top bid and meet or exceed starting bid.");
     }
 
-    function _updateAuctionState(uint256 tokenId, uint256 bidAmount, address bidder) internal {
-        Auction storage auction = auctions[tokenId];
-        if (auction.highestBidder != address(0)) {
-            bids[tokenId][auction.highestBidder] += auction.highestBid;
+    function updateAuctionAfterBid(uint256 tokenID, uint256 bidAmount, address bidder) internal {
+        AuctionDetails storage auction = tokenAuctions[tokenID];
+        if (auction.topBidder != address(0)) {
+            participantBids[tokenID][auction.topBidder] += auction.topBid;
         }
 
-        auction.highestBid = bidAmount;
-        auction.highestBidder = bidder;
+        auction.topBid = bidAmount;
+        auction.topBidder = bidder;
 
-        emit BidPlaced(tokenId, bidder, bidAmount);
+        emit BidSubmitted(tokenID, bidder, bidAmount);
     }
 
-    function _validateAuctionEndConditions(uint256 tokenId) internal view {
-        Auction storage auction = auctions[tokenId];
-        require(block.timestamp >= auction.endTime, "Auction not yet ended.");
-        require(!auction.ended, "Auction already ended.");
+    function ensureAuctionCompletionConditions(uint256 tokenID) internal view {
+        AuctionDetails storage auction = tokenAuctions[tokenID];
+        require(block.timestamp >= auction.closingTime, "Auction is still active.");
+        require(!auction.isCompleted, "Auction has already been finalized.");
     }
 
-    function _concludeAuction(uint256 tokenId) internal {
-        Auction storage auction = auctions[tokenId];
-        auction.ended = true;
+    function concludeAuction(uint256 tokenID) internal {
+        AuctionDetails storage auction = tokenAuctions[tokenID];
+        auction.isCompleted = true;
 
-        if (auction.highestBidder != address(0)) {
-            nftContract.transferFrom(address(this), auction.highestBidder, tokenId);
-            payable(auction.seller).transfer(auction.highestBid);
+        if (auction.topBidder != address(0)) {
+            nftTokenContract.transferFrom(address(this), auction.topBidder, tokenID);
+            payable(auction.owner).transfer(auction.topBid);
         } else {
-            nftContract.transferFrom(address(this), auction.seller, tokenId);
+            nftTokenContract.transferFrom(address(this), auction.owner, tokenID);
         }
 
-        emit AuctionEnded(tokenId, auction.highestBidder, auction.highestBid);
+        emit AuctionFinalized(tokenID, auction.topBidder, auction.topBid);
     }
 
-    function _withdrawBidFunds(uint256 tokenId, address bidder) internal {
-        uint256 amount = bids[tokenId][bidder];
-        require(amount > 0, "No funds to withdraw.");
-        bids[tokenId][bidder] = 0;
-        payable(bidder).transfer(amount);
+    function withdrawBidderFunds(uint256 tokenID, address bidder) internal {
+        uint256 amountToClaim = participantBids[tokenID][bidder];
+        require(amountToClaim > 0, "You have no funds to claim.");
+        participantBids[tokenID][bidder] = 0;
+        payable(bidder).transfer(amountToClaim);
 
-        emit FundsWithdrawn(bidder, amount);
+        emit FundsClaimed(bidder, amountToClaim);
     }
 }
