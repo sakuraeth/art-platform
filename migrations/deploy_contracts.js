@@ -4,15 +4,15 @@ const AuctionAccessControlContract = artifacts.require("AuctionAccessControl");
 
 module.exports = async function (deployer, network, accounts) {
   try {
-    const artTokenInstance = await deployArtToken(deployer);
-    const accessControlInstance = await deployAccessControl(deployer);
-    await deployArtAuction(deployer, artTokenInstance, accessControlInstance);
+    const artTokenDeployed = await deployArtToken(deployer);
+    const accessControlDeployed = await deployAccessControl(deployer);
+    await deployArtAuction(deployer, artTokenDeployed, accessControlDeployed);
 
     if (network !== 'live') {
-      await setupDemoEnvironment(artTokenInstance, accessControlInstance, accounts);
+      await initializeDemoEnvironment(artTokenDeployed, accessControlDeployed, accounts);
     }
   } catch (error) {
-    console.error("An error occurred during the deployment process:", error);
+    console.error("Deployment error:", error);
   }
 };
 
@@ -26,14 +26,14 @@ async function deployAccessControl(deployer) {
   return await AuctionAccessControlContract.deployed();
 }
 
-async function deployArtAuction(deployer, artTokenInstance, accessControlInstance) {
-  await deployer.deploy(ArtAuctionContract, artTokenInstance.address, accessControlInstance.address);
+async function deployArtAuction(deployer, tokenInstance, accessControlInstance) {
+  await deployer.deploy(ArtAuctionContract, tokenInstance.address, accessControlInstance.address);
   return await ArtAuctionContract.deployed();
 }
 
-async function setupDemoEnvironment(artTokenInstance, accessControlInstance, accounts) {
-  console.log('Setting up demo environment...');
-  const artAuctionInstance = await ArtAuctionContract.deployed();
-  await artAuctionInstance.setupDemoEnvironment({ from: accounts[0] });
-  console.log('Demo environment setup complete.');
+async function initializeDemoEnvironment(tokenInstance, accessControlInstance, demoAccounts) {
+  console.log('Initializing demo environment...');
+  const auctionInstance = await ArtAuctionContract.deployed();
+  await auctionInstance.initializeDemo({ from: demoAccounts[0] });
+  console.log('Demo environment initialization complete.');
 }
